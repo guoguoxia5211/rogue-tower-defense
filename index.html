@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>肉鸽塔防 v0.1.0</title>
+    <title>肉鸽塔防 v0.2.0</title>
     <style>
         * {
             margin: 0;
@@ -34,7 +34,6 @@
             width: 100%;
             height: auto;
             display: block;
-            background: linear-gradient(180deg, #87CEEB 0%, #98FB98 100%);
         }
         
         #ui {
@@ -45,6 +44,7 @@
             display: flex;
             justify-content: space-between;
             pointer-events: none;
+            z-index: 100;
         }
         
         .ui-panel {
@@ -68,13 +68,13 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.85);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             color: white;
-            z-index: 100;
+            z-index: 200;
         }
         
         #gameOverScreen {
@@ -83,7 +83,7 @@
         
         h1 {
             font-size: 48px;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
             background: linear-gradient(45deg, #FFD700, #FFA500);
             -webkit-background-clip: text;
@@ -108,21 +108,18 @@
             transform: scale(0.95);
         }
         
-        .btn-secondary {
-            background: linear-gradient(180deg, #2196F3, #1976D2);
-        }
-        
         #skillSelect {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.95);
             padding: 30px;
             border-radius: 20px;
             display: none;
-            z-index: 200;
+            z-index: 300;
             text-align: center;
+            min-width: 600px;
         }
         
         #skillSelect h2 {
@@ -133,16 +130,16 @@
         
         .skill-cards {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             justify-content: center;
         }
         
         .skill-card {
             background: linear-gradient(180deg, #667eea, #764ba2);
             color: white;
-            padding: 20px;
+            padding: 20px 15px;
             border-radius: 15px;
-            width: 180px;
+            width: 160px;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
             box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
@@ -154,18 +151,23 @@
         }
         
         .skill-card h3 {
-            font-size: 18px;
-            margin-bottom: 10px;
+            font-size: 16px;
+            margin-bottom: 8px;
         }
         
         .skill-card p {
-            font-size: 14px;
+            font-size: 12px;
             opacity: 0.9;
         }
         
         .skill-rare {
             background: linear-gradient(180deg, #FFD700, #FFA500);
             box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4);
+        }
+        
+        .skill-epic {
+            background: linear-gradient(180deg, #f093fb, #f5576c);
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
         }
         
         #message {
@@ -181,16 +183,29 @@
             transition: opacity 0.3s;
             z-index: 150;
         }
+        
+        #waveMessage {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 36px;
+            color: #FFF;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+            opacity: 0;
+            z-index: 150;
+        }
     </style>
 </head>
 <body>
     <div id="gameContainer">
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
         
         <div id="ui">
             <div class="ui-panel">
                 <span class="ui-icon">❤️</span>
-                <span id="health">100</span>
+                <span id="health">20</span>
             </div>
             <div class="ui-panel">
                 <span class="ui-icon">🌊</span>
@@ -198,7 +213,7 @@
             </div>
             <div class="ui-panel">
                 <span class="ui-icon">💰</span>
-                <span id="gold">100</span>
+                <span id="gold">150</span>
             </div>
         </div>
         
@@ -206,7 +221,7 @@
             <h1>🏰 肉鸽塔防</h1>
             <p style="font-size: 18px; margin-bottom: 30px; opacity: 0.9;">Roguelike Tower Defense</p>
             <button class="btn" onclick="game.start()">开始游戏</button>
-            <p style="margin-top: 20px; font-size: 14px; opacity: 0.7;">放置防御塔 · 随机技能 · 抵御波次</p>
+            <p style="margin-top: 20px; font-size: 14px; opacity: 0.7;">点击草地放置防御塔 · 阻止敌人到达左侧</p>
         </div>
         
         <div id="gameOverScreen">
@@ -221,6 +236,7 @@
         </div>
         
         <div id="message"></div>
+        <div id="waveMessage"></div>
     </div>
 
     <script src="game.js"></script>

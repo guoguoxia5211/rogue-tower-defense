@@ -1,16 +1,19 @@
 /**
- * 🏰 肉鸽塔防 - 核心游戏逻辑 v0.1.0
+ * 🏰 肉鸽塔防 - 横版侧视 v0.2.0
+ * 敌人从右向左进攻，防御塔放置在路径上
  */
 
 // ==================== 游戏配置 ====================
 const CONFIG = {
     CANVAS_WIDTH: 800,
-    CANVAS_HEIGHT: 600,
-    GROUND_Y: 500,
-    TOWER_SIZE: 40,
-    ENEMY_SIZE: 30,
-    BULLET_RADIUS: 8,
-    FPS: 60
+    CANVAS_HEIGHT: 500,
+    GROUND_Y: 400,
+    TOWER_SIZE: 50,
+    ENEMY_SIZE: 40,
+    BULLET_RADIUS: 6,
+    FPS: 60,
+    LANES: 5,  // 5 条路径
+    LANE_HEIGHT: 60
 };
 
 // ==================== 技能库 ====================
@@ -19,24 +22,27 @@ const SKILLS = [
     { id: 'attackSpeed', name: '攻速 +', desc: '攻击速度 +25%', rarity: 'common' },
     { id: 'range', name: '射程 +', desc: '攻击范围 +30%', rarity: 'common' },
     { id: 'gold', name: '财富 +', desc: '金币获取 +30%', rarity: 'common' },
+    { id: 'health', name: '生命 +', desc: '最大生命 +5', rarity: 'common' },
     { id: 'multishot', name: '多重射击', desc: '子弹数量 +1', rarity: 'rare' },
     { id: 'pierce', name: '穿透', desc: '子弹可穿透 2 个敌人', rarity: 'rare' },
     { id: 'slow', name: '冰冻', desc: '攻击有 30% 概率减速敌人', rarity: 'rare' },
     { id: 'crit', name: '暴击', desc: '20% 概率造成 200% 伤害', rarity: 'rare' },
     { id: 'chain', name: '连锁闪电', desc: '攻击有 25% 概率连锁 3 个敌人', rarity: 'epic' },
-    { id: 'explosion', name: '爆炸', desc: '击杀敌人产生小范围爆炸', rarity: 'epic' }
+    { id: 'explosion', name: '爆炸', desc: '击杀敌人产生小范围爆炸', rarity: 'epic' },
+    { id: 'snipe', name: '狙击', desc: '射程 +100% 伤害 +50%', rarity: 'epic' }
 ];
 
 // ==================== 防御塔类 ====================
 class Tower {
-    constructor(x, y) {
+    constructor(x, y, lane) {
         this.x = x;
         this.y = y;
+        this.lane = lane;
         this.width = CONFIG.TOWER_SIZE;
         this.height = CONFIG.TOWER_SIZE;
-        this.range = 150;
-        this.damage = 10;
-        this.attackSpeed = 60; // 帧数间隔
+        this.range = 200;
+        this.damage = 15;
+        this.attackSpeed = 50;
         this.cooldown = 0;
         this.color = '#4CAF50';
         
@@ -56,8 +62,9 @@ class Tower {
             return;
         }
         
-        // 寻找范围内敌人
-        const target = this.findTarget(enemies);
+        // 只攻击同一行的敌人
+        const laneEnemies = enemies.filter(e => e.lane === this.lane && e.active);
+        const target = this.findTarget(laneEnemies);
         if (target) {
             this.shoot(target, bullets);
             this.cooldown = this.attackSpeed;
@@ -65,61 +72,63 @@ class Tower {
     }
     
     findTarget(enemies) {
+        // 找最近的敌人
+        let closest = null;
+        let closestDist = Infinity;
+        
         for (let enemy of enemies) {
             const dx = enemy.x - this.x;
-            const dy = enemy.y - this.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance <= this.range) {
-                return enemy;
+            const distance = Math.abs(dx);
+            if (distance < this.range && distance < closestDist) {
+                closest = enemy;
+                closestDist = distance;
             }
         }
-        return null;
+        return closest;
     }
     
     shoot(target, bullets) {
-        const angle = Math.atan2(target.y - this.y, target.x - this.x);
-        const speed = 8;
+        const direction = target.x > this.x ? 1 : -1;
+        const speed = 10 * direction;
         
         // 多重射击
         const bulletCount = 1 + this.multishot;
         for (let i = 0; i < bulletCount; i++) {
-            const spreadAngle = angle + (i - (bulletCount - 1) / 2) * 0.2;
             bullets.push(new Bullet(
                 this.x + this.width / 2,
                 this.y + this.height / 2,
-                Math.cos(spreadAngle) * speed,
-                Math.sin(spreadAngle) * speed,
+                speed,
+                (Math.random() - 0.5) * 2,  // 轻微散射
                 this.damage,
                 this.pierce,
                 this.slowChance,
                 this.critChance,
                 this.critMultiplier,
                 this.chainChance,
-                this.explosion
+                this.explosion,
+                this.lane
             ));
         }
     }
     
     draw(ctx) {
         // 塔座
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = '#8B4513';
         ctx.fillRect(this.x - 5, this.y + this.height - 10, this.width + 10, 10);
         
         // 塔身
         ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y, this.width, this.height);
         
-        // 塔顶装饰
+        // 炮管
+        ctx.fillStyle = '#666';
+        ctx.fillRect(this.x + this.width - 10, this.y + 15, 20, 10);
+        
+        // 装饰
         ctx.fillStyle = '#8BC34A';
         ctx.beginPath();
-        ctx.arc(this.x + this.width / 2, this.y + this.height / 2, 10, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width / 2, this.y + this.height / 2, 12, 0, Math.PI * 2);
         ctx.fill();
-        
-        // 射程范围（调试用）
-        // ctx.strokeStyle = 'rgba(76, 175, 80, 0.3)';
-        // ctx.beginPath();
-        // ctx.arc(this.x + this.width/2, this.y + this.height/2, this.range, 0, Math.PI * 2);
-        // ctx.stroke();
     }
     
     applySkill(skillId) {
@@ -128,7 +137,7 @@ class Tower {
                 this.damage *= 1.2;
                 break;
             case 'attackSpeed':
-                this.attackSpeed = Math.max(10, this.attackSpeed * 0.75);
+                this.attackSpeed = Math.max(15, this.attackSpeed * 0.75);
                 break;
             case 'range':
                 this.range *= 1.3;
@@ -152,13 +161,17 @@ class Tower {
             case 'explosion':
                 this.explosion = true;
                 break;
+            case 'snipe':
+                this.range *= 2;
+                this.damage *= 1.5;
+                break;
         }
     }
 }
 
 // ==================== 子弹类 ====================
 class Bullet {
-    constructor(x, y, vx, vy, damage, pierce, slowChance, critChance, critMultiplier, chainChance, explosion) {
+    constructor(x, y, vx, vy, damage, pierce, slowChance, critChance, critMultiplier, chainChance, explosion, lane) {
         this.x = x;
         this.y = y;
         this.vx = vx;
@@ -170,6 +183,7 @@ class Bullet {
         this.critMultiplier = critMultiplier;
         this.chainChance = chainChance;
         this.explosion = explosion;
+        this.lane = lane;
         this.radius = CONFIG.BULLET_RADIUS;
         this.active = true;
         this.hitEnemies = [];
@@ -193,6 +207,12 @@ class Bullet {
         ctx.fillStyle = this.isCrit ? '#FFD700' : '#FF6B6B';
         ctx.fill();
         
+        // 拖尾效果
+        ctx.fillStyle = 'rgba(255, 107, 107, 0.3)';
+        ctx.beginPath();
+        ctx.arc(this.x - this.vx * 2, this.y - this.vy * 2, this.radius * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        
         // 暴击特效
         if (this.isCrit) {
             ctx.strokeStyle = '#FFF';
@@ -204,18 +224,27 @@ class Bullet {
 
 // ==================== 敌人类 ====================
 class Enemy {
-    constructor(wave) {
-        this.x = CONFIG.CANVAS_WIDTH;
-        this.y = CONFIG.GROUND_Y - CONFIG.ENEMY_SIZE;
+    constructor(wave, lane) {
+        this.lane = lane;
+        this.x = CONFIG.CANVAS_WIDTH + 50;
+        this.y = 100 + lane * CONFIG.LANE_HEIGHT + 10;
         this.width = CONFIG.ENEMY_SIZE;
-        this.height = CONFIG.ENEMY_SIZE;
-        this.speed = 1 + wave * 0.2;
-        this.maxHealth = 20 + wave * 10;
+        this.height = CONFIG.ENEMY_SIZE - 10;
+        this.speed = 0.8 + wave * 0.15;
+        this.maxHealth = 30 + wave * 15;
         this.health = this.maxHealth;
-        this.damage = 10;
+        this.damage = 1;
         this.active = true;
         this.slowEffect = 0;
-        this.color = wave % 5 === 0 ? '#9C27B0' : '#F44336'; // BOSS 是紫色
+        this.isBoss = wave % 5 === 0;
+        this.color = this.isBoss ? '#9C27B0' : '#F44336';
+        
+        if (this.isBoss) {
+            this.maxHealth *= 3;
+            this.health = this.maxHealth;
+            this.width = 60;
+            this.height = 60;
+        }
     }
     
     update() {
@@ -241,14 +270,14 @@ class Enemy {
         let finalDamage = damage;
         if (Math.random() < critChance) {
             finalDamage *= critMultiplier;
-            // 这里可以添加暴击标记
+            this.isCrit = true;
         }
         
         this.health -= finalDamage;
         
         // 减速效果
         if (Math.random() < slowChance) {
-            this.slowEffect = 60; // 减速 1 秒
+            this.slowEffect = 60;
         }
         
         // 连锁闪电
@@ -263,35 +292,31 @@ class Enemy {
         
         if (this.health <= 0) {
             this.active = false;
-            return true; // 死亡
+            return true;
         }
         return false;
     }
     
     chainLightning(enemies) {
-        // 连锁闪电逻辑（简化版）
         for (let enemy of enemies) {
-            if (enemy !== this && enemy.active) {
+            if (enemy !== this && enemy.active && enemy.lane === this.lane) {
                 const dx = enemy.x - this.x;
-                const dy = enemy.y - this.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
+                const dist = Math.abs(dx);
                 if (dist < 100) {
-                    enemy.health -= 5;
-                    break; // 只连锁一个
+                    enemy.health -= 8;
+                    break;
                 }
             }
         }
     }
     
     explosionDamage(enemies) {
-        // 爆炸伤害
         for (let enemy of enemies) {
-            if (enemy !== this && enemy.active) {
+            if (enemy !== this && enemy.active && enemy.lane === this.lane) {
                 const dx = enemy.x - this.x;
-                const dy = enemy.y - this.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
+                const dist = Math.abs(dx);
                 if (dist < 80) {
-                    enemy.health -= 10;
+                    enemy.health -= 15;
                 }
             }
         }
@@ -300,36 +325,60 @@ class Enemy {
     draw(ctx) {
         // 敌人身体
         ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.width, this.height);
         
-        // 眼睛
-        ctx.fillStyle = '#FFF';
-        ctx.beginPath();
-        ctx.arc(this.x + 8, this.y + 10, 5, 0, Math.PI * 2);
-        ctx.arc(this.x + 22, this.y + 10, 5, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        ctx.arc(this.x + 8, this.y + 10, 2, 0, Math.PI * 2);
-        ctx.arc(this.x + 22, this.y + 10, 2, 0, Math.PI * 2);
-        ctx.fill();
+        if (this.isBoss) {
+            // BOSS 画大一点
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width/2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // BOSS 光环
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        } else {
+            // 普通敌人画成小怪物
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            
+            // 眼睛
+            ctx.fillStyle = '#FFF';
+            ctx.beginPath();
+            ctx.arc(this.x + 12, this.y + 15, 6, 0, Math.PI * 2);
+            ctx.arc(this.x + 28, this.y + 15, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(this.x + 12, this.y + 15, 3, 0, Math.PI * 2);
+            ctx.arc(this.x + 28, this.y + 15, 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 愤怒表情
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(this.x + 8, this.y + 8);
+            ctx.lineTo(this.x + 16, this.y + 12);
+            ctx.moveTo(this.x + 32, this.y + 8);
+            ctx.lineTo(this.x + 24, this.y + 12);
+            ctx.stroke();
+        }
         
         // 血条
         const healthBarWidth = this.width;
-        const healthBarHeight = 4;
-        const healthPercent = this.health / this.maxHealth;
+        const healthBarHeight = 5;
+        const healthPercent = Math.max(0, this.health / this.maxHealth);
         
         ctx.fillStyle = '#333';
-        ctx.fillRect(this.x, this.y - 8, healthBarWidth, healthBarHeight);
+        ctx.fillRect(this.x, this.y - 10, healthBarWidth, healthBarHeight);
         ctx.fillStyle = healthPercent > 0.5 ? '#4CAF50' : healthPercent > 0.25 ? '#FFC107' : '#F44336';
-        ctx.fillRect(this.x, this.y - 8, healthBarWidth * healthPercent, healthBarHeight);
+        ctx.fillRect(this.x, this.y - 10, healthBarWidth * healthPercent, healthBarHeight);
         
         // 减速效果
         if (this.slowEffect > 0) {
             ctx.strokeStyle = '#00BCD4';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(this.x - 2, this.y - 2, this.width + 4, this.height + 4);
+            ctx.lineWidth = 3;
+            ctx.strokeRect(this.x - 3, this.y - 3, this.width + 6, this.height + 6);
         }
     }
 }
@@ -340,24 +389,25 @@ class Game {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.running = false;
-        this.health = 100;
-        this.gold = 100;
+        this.health = 20;
+        this.maxHealth = 20;
+        this.gold = 150;
         this.wave = 1;
         this.towers = [];
         this.enemies = [];
         this.bullets = [];
         this.enemySpawnTimer = 0;
-        this.enemiesPerWave = 5;
+        this.enemiesPerWave = 8;
         this.enemiesSpawned = 0;
         this.waveInProgress = false;
         this.playerSkills = {};
+        this.towerCost = 80;
         
         this.setupInput();
         this.gameLoop = this.gameLoop.bind(this);
     }
     
     setupInput() {
-        // 点击放置防御塔
         this.canvas.addEventListener('click', (e) => {
             if (!this.running) return;
             
@@ -370,7 +420,6 @@ class Game {
             this.placeTower(x, y);
         });
         
-        // 触摸支持
         this.canvas.addEventListener('touchstart', (e) => {
             if (!this.running) return;
             e.preventDefault();
@@ -387,49 +436,49 @@ class Game {
     }
     
     placeTower(x, y) {
-        const towerCost = 50;
-        
-        if (this.gold < towerCost) {
+        if (this.gold < this.towerCost) {
             this.showMessage('💰 金币不足！');
             return;
         }
         
-        // 检查是否在有效区域
-        if (y < 100 || y > CONFIG.GROUND_Y - CONFIG.TOWER_SIZE) {
-            this.showMessage('❌ 无效位置！');
+        // 计算在哪条路径
+        const lane = Math.floor((y - 100) / CONFIG.LANE_HEIGHT);
+        if (lane < 0 || lane >= CONFIG.LANES) {
+            this.showMessage('❌ 只能在草地上放置！');
             return;
         }
         
+        const towerY = 100 + lane * CONFIG.LANE_HEIGHT + 10;
+        
         // 检查是否已有塔
         for (let tower of this.towers) {
-            const dx = tower.x - x;
-            const dy = tower.y - y;
-            if (Math.abs(dx) < CONFIG.TOWER_SIZE && Math.abs(dy) < CONFIG.TOWER_SIZE) {
+            if (tower.lane === lane && Math.abs(tower.x - x) < CONFIG.TOWER_SIZE) {
                 this.showMessage('❌ 已有防御塔！');
                 return;
             }
         }
         
-        this.gold -= towerCost;
-        const tower = new Tower(x - CONFIG.TOWER_SIZE / 2, y);
+        this.gold -= this.towerCost;
+        const tower = new Tower(x - CONFIG.TOWER_SIZE / 2, towerY, lane);
         this.towers.push(tower);
         this.updateUI();
+        this.showMessage('🏰 防御塔已放置！');
     }
     
     start() {
-        // 重置游戏状态
-        this.health = 100;
-        this.gold = 100;
+        this.health = 20;
+        this.maxHealth = 20;
+        this.gold = 150;
         this.wave = 1;
         this.towers = [];
         this.enemies = [];
         this.bullets = [];
         this.enemySpawnTimer = 0;
         this.enemiesSpawned = 0;
-        this.waveInProgress = true;
+        this.waveInProgress = false;
         this.playerSkills = {};
+        this.towerCost = 80;
         
-        // 隐藏界面
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('gameOverScreen').style.display = 'none';
         
@@ -437,19 +486,20 @@ class Game {
         this.updateUI();
         requestAnimationFrame(this.gameLoop);
         
-        this.startWave();
+        setTimeout(() => this.startWave(), 1000);
     }
     
     startWave() {
-        this.enemiesPerWave = 5 + this.wave * 2;
+        this.enemiesPerWave = 8 + this.wave * 3;
         this.enemiesSpawned = 0;
         this.waveInProgress = true;
-        this.showMessage(`🌊 第 ${this.wave} 波！`);
+        this.showWaveMessage(`🌊 第 ${this.wave} 波敌人来袭！`);
     }
     
     spawnEnemy() {
         if (this.enemiesSpawned < this.enemiesPerWave) {
-            this.enemies.push(new Enemy(this.wave));
+            const lane = Math.floor(Math.random() * CONFIG.LANES);
+            this.enemies.push(new Enemy(this.wave, lane));
             this.enemiesSpawned++;
         }
     }
@@ -460,7 +510,7 @@ class Game {
         // 生成敌人
         if (this.waveInProgress && this.enemySpawnTimer <= 0) {
             this.spawnEnemy();
-            this.enemySpawnTimer = 60; // 1 秒生成一个
+            this.enemySpawnTimer = Math.max(20, 60 - this.wave * 3);
         } else {
             this.enemySpawnTimer--;
         }
@@ -480,7 +530,7 @@ class Game {
             bullet.update();
         }
         
-        // 更新敌人并检测碰撞
+        // 更新敌人
         for (let enemy of this.enemies) {
             const result = enemy.update();
             if (result === 'reach_base') {
@@ -498,7 +548,7 @@ class Game {
             if (!bullet.active) continue;
             
             for (let enemy of this.enemies) {
-                if (!enemy.active) continue;
+                if (!enemy.active || enemy.lane !== bullet.lane) continue;
                 
                 const dx = bullet.x - (enemy.x + enemy.width / 2);
                 const dy = bullet.y - (enemy.y + enemy.height / 2);
@@ -523,7 +573,8 @@ class Game {
                     
                     if (killed) {
                         const goldBonus = this.playerSkills.gold || 1;
-                        this.gold += Math.floor(10 * goldBonus);
+                        const baseGold = enemy.isBoss ? 50 : 10;
+                        this.gold += Math.floor(baseGold * goldBonus);
                         this.updateUI();
                     }
                     
@@ -532,7 +583,7 @@ class Game {
             }
         }
         
-        // 清理非活动对象
+        // 清理
         this.bullets = this.bullets.filter(b => b.active);
         this.enemies = this.enemies.filter(e => e.active);
     }
@@ -542,7 +593,12 @@ class Game {
         this.wave++;
         this.updateUI();
         
-        // 技能三选一
+        // 回血奖励
+        if (this.health < this.maxHealth) {
+            this.health = Math.min(this.maxHealth, this.health + 3);
+            this.updateUI();
+        }
+        
         this.showSkillSelect();
     }
     
@@ -550,7 +606,6 @@ class Game {
         const skillSelect = document.getElementById('skillSelect');
         const skillCards = document.getElementById('skillCards');
         
-        // 随机选择 3 个技能
         const availableSkills = [...SKILLS];
         const selected = [];
         for (let i = 0; i < 3; i++) {
@@ -577,43 +632,40 @@ class Game {
     }
     
     selectSkill(skill) {
-        // 应用技能
         for (let tower of this.towers) {
             tower.applySkill(skill.id);
         }
         
-        // 记录玩家技能
         if (!this.playerSkills[skill.id]) {
             this.playerSkills[skill.id] = 0;
         }
         this.playerSkills[skill.id]++;
         
-        // 特殊处理全局技能
+        // 全局技能
         if (skill.id === 'gold') {
             this.playerSkills.gold = (this.playerSkills.gold || 1) + 0.3;
+        }
+        if (skill.id === 'health') {
+            this.maxHealth += 5;
+            this.health += 5;
+            this.updateUI();
         }
         
         document.getElementById('skillSelect').style.display = 'none';
         this.showMessage(`✨ 获得 ${skill.name}！`);
         
-        // 开始下一波
         setTimeout(() => this.startWave(), 500);
     }
     
     draw() {
-        // 清空画布
         this.ctx.clearRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
         
-        // 绘制背景
         this.drawBackground();
+        this.drawLanes();
         
         // 绘制防线
         this.ctx.fillStyle = '#F44336';
-        this.ctx.fillRect(50, 0, 5, CONFIG.CANVAS_HEIGHT);
-        
-        // 绘制地面
-        this.ctx.fillStyle = '#8B4513';
-        this.ctx.fillRect(0, CONFIG.GROUND_Y, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT - CONFIG.GROUND_Y);
+        this.ctx.fillRect(45, 0, 10, CONFIG.CANVAS_HEIGHT);
         
         // 绘制防御塔
         for (let tower of this.towers) {
@@ -632,25 +684,47 @@ class Game {
     }
     
     drawBackground() {
-        // 天空渐变
-        const gradient = this.ctx.createLinearGradient(0, 0, 0, CONFIG.GROUND_Y);
-        gradient.addColorStop(0, '#87CEEB');
-        gradient.addColorStop(1, '#E0F7FA');
+        // 天空
+        const gradient = this.ctx.createLinearGradient(0, 0, 0, 100);
+        gradient.addColorStop(0, '#1a1a2e');
+        gradient.addColorStop(1, '#16213e');
         this.ctx.fillStyle = gradient;
-        this.ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.GROUND_Y);
+        this.ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, 100);
         
-        // 云朵装饰
-        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        this.ctx.beginPath();
-        this.ctx.arc(100, 80, 30, 0, Math.PI * 2);
-        this.ctx.arc(140, 80, 40, 0, Math.PI * 2);
-        this.ctx.arc(180, 80, 30, 0, Math.PI * 2);
-        this.ctx.fill();
+        // 标题栏区域
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        this.ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, 100);
+    }
+    
+    drawLanes() {
+        // 5 条路径（草地）
+        for (let i = 0; i < CONFIG.LANES; i++) {
+            const y = 100 + i * CONFIG.LANE_HEIGHT;
+            
+            // 草地背景
+            const laneGradient = this.ctx.createLinearGradient(0, y, 0, y + CONFIG.LANE_HEIGHT);
+            laneGradient.addColorStop(0, '#4a7c23');
+            laneGradient.addColorStop(1, '#3d6b1c');
+            this.ctx.fillStyle = laneGradient;
+            this.ctx.fillRect(50, y, CONFIG.CANVAS_WIDTH - 50, CONFIG.LANE_HEIGHT);
+            
+            // 路径分隔线
+            this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.moveTo(50, y);
+            this.ctx.lineTo(CONFIG.CANVAS_WIDTH, y);
+            this.ctx.stroke();
+        }
         
+        // 左侧基地
+        this.ctx.fillStyle = '#2196F3';
+        this.ctx.fillRect(0, 0, 50, CONFIG.CANVAS_HEIGHT);
+        
+        // 基地装饰
+        this.ctx.fillStyle = '#1976D2';
         this.ctx.beginPath();
-        this.ctx.arc(500, 120, 25, 0, Math.PI * 2);
-        this.ctx.arc(535, 120, 35, 0, Math.PI * 2);
-        this.ctx.arc(570, 120, 25, 0, Math.PI * 2);
+        this.ctx.arc(25, CONFIG.CANVAS_HEIGHT / 2, 20, 0, Math.PI * 2);
         this.ctx.fill();
     }
     
@@ -671,7 +745,7 @@ class Game {
     }
     
     updateUI() {
-        document.getElementById('health').textContent = Math.max(0, this.health);
+        document.getElementById('health').textContent = `${this.health}/${this.maxHealth}`;
         document.getElementById('wave').textContent = this.wave;
         document.getElementById('gold').textContent = this.gold;
     }
@@ -684,6 +758,16 @@ class Game {
         setTimeout(() => {
             msgEl.style.opacity = '0';
         }, 1500);
+    }
+    
+    showWaveMessage(text) {
+        const msgEl = document.getElementById('waveMessage');
+        msgEl.textContent = text;
+        msgEl.style.opacity = '1';
+        
+        setTimeout(() => {
+            msgEl.style.opacity = '0';
+        }, 2000);
     }
 }
 
